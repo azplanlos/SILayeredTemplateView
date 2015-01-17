@@ -1,0 +1,3 @@
+[submodule "SIResizeImageView"]
+	path = SIResizeImageView
+	url = git@github.com:StudioIstanbul/SIResizeImageView.git
