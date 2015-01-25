@@ -8,11 +8,17 @@
 
 #import <Cocoa/Cocoa.h>
 #import <SVGKit/SVGKit.h>
+#import <SVGKit/CALayerExporter.h>
 
 @interface SILayeredTemplateView : NSView {
     SVGKImage* svgImage;
+    __strong NSMutableArray* svgLayers;
+    NSSize originalSize;
+    BOOL inResize;
 }
+
 @property (nonatomic, strong) NSDictionary* attributes;
+@property (strong) NSMutableArray *viewArray;
 
 -(void)loadSVGFromURL:(NSURL*)svgURL;
 
