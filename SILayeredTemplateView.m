@@ -26,7 +26,7 @@
         // Initialization code here.
         self.wantsLayer = YES;
         viewArray = [NSMutableArray array];
-        originalSize = frame.size;
+        originalSize = self.visibleRect.size;
         inResize = NO;
     }
     
@@ -38,7 +38,7 @@
     [svgImage scaleToFitInside:self.bounds.size];
     svgLayers = [NSMutableArray array];
     [self deepScanDOM:svgImage.DOMTree inImage:svgImage];
-    [self setNeedsDisplay:YES];
+    [super setNeedsDisplay:YES];
     [[svgImage.NSImage TIFFRepresentation] writeToFile:[[[NSFileManager defaultManager] applicationSupportDirectory]stringByAppendingPathComponent:@"test.tif"] atomically:YES];
     [self resetContents];
 }
@@ -51,8 +51,6 @@
             if ([elem.identifier rangeOfString:@"Ebene"].location == NSNotFound) {
                 __strong CALayer* layer = [svgImage layerWithIdentifier:elem.identifier];
                 [layer flipCoordinatesForRect:self.bounds];
-                NSLog(@"SVG element '%@' (%@) bounds: %0.0f/%0.0f/%0.0f/%0.0f", elem.identifier,layer.className, layer.frame.origin.x, layer.frame.origin.y, layer
-                      .frame.size.width, layer.frame.size.height);
                 layer.geometryFlipped = YES;
                 NSString* pattern = @"\\{(.+):(.+)\\}";
                 NSRegularExpression* keyValuePattern = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
@@ -60,7 +58,6 @@
                 if (kVMatch.range.location != NSNotFound) {
                     NSString* objectClassName = [elem.identifier substringWithRange:[kVMatch rangeAtIndex:1]];
                     objectName = [elem.identifier substringWithRange:[kVMatch rangeAtIndex:2]];
-                    NSLog(@"key value object '%@' of type %@", objectName, objectClassName);
                     if ([objectClassName isEqualToString:@"NSImage"]) {
                         /*CALayer* maskLayer = layer;
                         CALayer* imageLayer = [CALayer layer];
@@ -71,7 +68,6 @@
                         imageLayer.mask = maskLayer;
                         [layer addSublayer:imageLayer];*/
                     } else if ([objectClassName isEqualToString:@"NSString"]) {
-                        NSLog(@"string content: %@", ((CATextLayer*)layer).string);
                         CATextLayer* textLayer = (CATextLayer*)layer;
                         layer = [CALayer new];
                         layer.frame = textLayer.frame;
@@ -130,15 +126,12 @@
 }
 
 -(NSArray*)extractPathsFromLayer:(CALayer*)layer {
-    NSLog(@"layer has %i sublayers", layer.sublayers.count);
     NSMutableArray* array = [NSMutableArray array];
     for (CALayer* sublayer in layer.sublayers) {
-        NSLog(@"sublayer of type %@", NSStringFromClass([sublayer class]));
         SILayerDescription* layerDesc = [SILayerDescription new];
         layerDesc.frame = sublayer.frame;
         layerDesc.name = sublayer.name;
         if ([sublayer isKindOfClass:[CAShapeLayer class]]) {
-            NSLog(@"shapeLayer!");
             // extract path
             CGPathRef path = ((CAShapeLayer*) sublayer).path;
             layerDesc.pathDescription = [CGPathDescription pathDescriptionFromPath:path];
@@ -148,7 +141,6 @@
                 layerDesc.strokeColor = [NSColor colorWithCGColor:((CAShapeLayer*)sublayer).strokeColor];
         } else if (((CALayer*)sublayer).mask) {
             if ([((CALayer*)sublayer).mask isKindOfClass:[CAShapeLayer class]]) {
-                NSLog(@"shapeLayer mask!");
                 // extract path
                 CGPathRef path = ((CAShapeLayer*) ((CALayer*)sublayer).mask).path;
                 
@@ -165,7 +157,6 @@
                 [array addObjectsFromArray:[self extractPathsFromLayer:((CALayer*)sublayer).mask]];
             }
         } else if ([sublayer isKindOfClass:[CATextLayer class]]) {
-            NSLog(@"textlayer '%@'", ((CATextLayer*)sublayer).string);
             layerDesc.font = (__bridge NSFont *)(((CATextLayer*)sublayer).font);
             layerDesc.strokeWidth = ((CATextLayer*)sublayer).fontSize;
             layerDesc.fillColor = [NSColor colorWithCGColor:((CATextLayer*)sublayer).foregroundColor];
@@ -185,15 +176,14 @@
         }
     }
     if (layer.mask) {
-        NSLog(@"maskLayer!");
+
     }
     return [NSArray arrayWithArray:array];
 }
 
 -(void)resetContents {
-    CGFloat scaleFactor = scaleFactorForScaleFromSizeToSize(originalSize, self.bounds.size);
+    CGFloat scaleFactor = scaleFactorForScaleFromSizeToSize(originalSize, self.visibleRect.size);
     for (NSDictionary* dict in svgLayers) {
-        NSLog(@"layer %@", [dict valueForKey:@"svgKey"]);
         if ([[dict valueForKey:@"resizeable"] boolValue]) {
             NSView* myView = [dict valueForKey:@"layer"];
             if (inResize) {
@@ -223,12 +213,9 @@
                     ((CATextLayer*)shapeLayer).fontSize = layerDesc.strokeWidth*scaleFactor;
                     ((CATextLayer*)shapeLayer).foregroundColor = layerDesc.fillColor.CGColor;
                     ((CATextLayer*)shapeLayer).string = [self.attributes valueForKey:[dict valueForKey:@"contentKey"]];
-                    NSLog(@"text layer %@", [dict valueForKey:@"svgKey"]);
                 } else {
                     shapeLayer = [CAShapeLayer layer];
-                    CGPathRef path = [layerDesc.pathDescription pathRepresentationToFitInSize:self.bounds.size originalSize:originalSize];
-                    NSLog(@"path on layer %@ with bbox %f,%f,%f,%f", [dict valueForKey:@"svgKey"], CGPathGetBoundingBox(path).origin.x, CGPathGetBoundingBox(path).origin.y, CGPathGetBoundingBox(path).size.width, CGPathGetBoundingBox(path).size.height);
-                    ((CAShapeLayer*)shapeLayer).path = path;
+                    CGPathRef path = [layerDesc.pathDescription pathRepresentationToFitInSize:self.bounds.size originalSize:originalSize];                    ((CAShapeLayer*)shapeLayer).path = path;
                     
                     /*if (layerDesc.fillColor && layerDesc.fillColor.alphaComponent > 0) {
                         float num = (float)arc4random_uniform(100)/100;
@@ -246,7 +233,6 @@
                     }
                 }
                 if (layerDesc.shadow) {
-                    NSLog(@"reset shadow");
                     shapeLayer.shadowRadius = layerDesc.shadow.shadowBlurRadius*scaleFactor;
                     shapeLayer.shadowColor = layerDesc.shadow.shadowColor.CGColor;
                     shapeLayer.shadowOffset =  NSMakeSize(layerDesc.shadow.shadowOffset.width*scaleFactor, layerDesc.shadow.shadowOffset.height*scaleFactor);
@@ -283,7 +269,6 @@
                 newView.layer = layer;
                 layer.zPosition = newView.viewNum;
                 newView.frame = self.bounds;
-                NSLog(@"'%@': %f,%f,%f,%f, zPos %f", [dict valueForKey:@"svgKey"], newView.frame.origin.x, newView.frame.origin.y, newView.frame.size.width, newView.frame.size.height, layer.zPosition)
                 [CATransaction commit];
             } else {
                 NSLog(@"stored view not valid for '%@'", [dict valueForKey:@"svgKey"]);
@@ -291,7 +276,6 @@
         } else {
             __strong NSView* myView = [dict valueForKey:@"layer"];
             myView.frame = self.bounds;
-            NSLog(@"fixed layer '%@': %f,%f,%f,%f", [dict valueForKey:@"svgKey"], myView.frame.origin.x, myView.frame.origin.y, myView.frame.size.width, myView.frame.size.height);
         }
         }
     }
@@ -309,7 +293,6 @@ NSComparisonResult viewCompareByTag(SILayerView *firstView, SILayerView *secondV
 
 -(void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
     if ([keyPath isEqualToString:@"frame"] && [object isKindOfClass:[NSView class]] && !inResize) {
-        NSLog(@"frame change!");
         [self resetContents];
     }
 }
@@ -323,6 +306,11 @@ NSComparisonResult viewCompareByTag(SILayerView *firstView, SILayerView *secondV
     [super viewDidEndLiveResize];
     [self resetContents];
     inResize = NO;
+}
+
+-(void)setNeedsDisplay:(BOOL)flag {
+    [self resetContents];
+    [super setNeedsDisplay:flag];
 }
 
 -(void)dealloc {
